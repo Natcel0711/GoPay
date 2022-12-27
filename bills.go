@@ -20,12 +20,14 @@ func main() {
 		fmt.Println(err.Error())
 		return
 	}
-	fmt.Printf("Escogiste %s. \n", serviceOptions.Chosen)
+
 	if serviceOptions.Chosen == "luz" {
 		LuzService(serviceOptions)
 	}
-	//token := getLumaToken()
-	//getBills(token)
+
+	if serviceOptions.Chosen == "internet/telefonica" {
+		LibertyService(serviceOptions)
+	}
 }
 func LuzService(options ServiceOptions) {
 	fmt.Println("Escogiste luz")
@@ -34,16 +36,33 @@ func LuzService(options ServiceOptions) {
 		fmt.Println(err.Error())
 		return
 	}
-
 	fmt.Printf("Escogiste %s. \n", options.Chosen)
-
+	var token string
 	if options.Chosen == "Historial" {
-		var token string
 		getLumaToken(&token)
 		fmt.Printf("Token %s. \n", token)
-		getBills(token)
+		getLumaBills(token)
 	}
 
+}
+func LibertyService(options ServiceOptions) {
+	httposturl := "https://mi.libertypr.com/Auth/LoginCDCAPI"
+	fmt.Println("HTTP POST URL", httposturl)
+	var jsonData = []byte(`{"Password": "PLACEHOLDER","Username": "PLACEHOLDER"}`)
+	request, error := http.NewRequest("POST", httposturl, bytes.NewBuffer(jsonData))
+	client := &http.Client{}
+	response, error := client.Do(request)
+	if error != nil {
+		panic(error)
+	}
+	body, _ := ioutil.ReadAll(response.Body)
+	var res LibertyResponse
+	json.Unmarshal([]byte(string(body)), &res)
+	if !res.Success {
+		for i := 0; i < len(res.Errors); i++ {
+			fmt.Println("Error: ", res.Errors[i])
+		}
+	}
 }
 
 func getLumaToken(token *string) {
@@ -61,24 +80,23 @@ func getLumaToken(token *string) {
 		panic(error)
 	}
 	body, _ := ioutil.ReadAll(response.Body)
-	var res PostResponse
+	var res LumaResponse
 	json.Unmarshal([]byte(string(body)), &res)
 	fmt.Printf("Token: %s", res.Data.Token)
 	fmt.Printf("Message: %s", res.Message)
 	*token = res.Data.Token
 }
 
-func getBills(token string) {
+func getLumaBills(token string) {
 	url := "https://api.miluma.lumapr.com/miluma-bill-api/api/bill/history?accId={AccountID}"
-
 	req, _ := http.NewRequest("GET", url, nil)
-
 	req.Header.Add("Authorization", "Bearer "+token)
-
-	res, _ := http.DefaultClient.Do(req)
-
-	defer res.Body.Close()
-	body, _ := ioutil.ReadAll(res.Body)
+	client := &http.Client{}
+	response, error := client.Do(req)
+	if error != nil {
+		panic(error)
+	}
+	body, _ := ioutil.ReadAll(response.Body)
 	var bills Bills
 	json.Unmarshal([]byte(string(body)), &bills)
 }
@@ -86,11 +104,15 @@ func ServicesPrompt(serviceOptions *ServiceOptions) error {
 	return survey.Ask(qs, serviceOptions)
 }
 
-type PostResponse struct {
+type LumaResponse struct {
 	Data struct {
 		Token string `json:"token"`
 	} `json:"data"`
 	Message string `json:"message"`
+}
+type LibertyResponse struct {
+	Success bool     `json:"success"`
+	Errors  []string `json:"errors"`
 }
 
 type Bills struct {
@@ -110,8 +132,8 @@ var qs = []*survey.Question{
 	{
 		Name: "option", //field name que buscara en el struct y guarda el value
 		Prompt: &survey.Select{
-			Message: "Escoge:",
-			Options: []string{"luz", "agua", "internet/telefonica"},
+			Message: "Escoge servicio:",
+			Options: []string{"luz", "internet/telefonica"},
 			Default: "luz",
 		},
 	},
@@ -121,7 +143,7 @@ var luzqs = []*survey.Question{
 	{
 		Name: "option", //field name que buscara en el struct y guarda el value
 		Prompt: &survey.Select{
-			Message: "Escoge:",
+			Message: "Escoge accion:",
 			Options: []string{"Historial", "Pagar"},
 			Default: "Historial",
 		},
